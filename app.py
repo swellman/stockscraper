@@ -1,24 +1,22 @@
-from flask import Flask, jsonify, request  # Import Flask and necessary modules
-from flask_cors import CORS  # Import CORS for handling cross-origin requests
-from flask_caching import Cache  # Import Cache for caching responses
-from sqlalchemy import create_engine  # Import create_engine from SQLAlchemy for database connection
-from sqlalchemy.orm import sessionmaker  # Import sessionmaker from SQLAlchemy for session management
-from bs4 import BeautifulSoup  # Import BeautifulSoup for parsing HTML
-import requests  # Import requests for making HTTP requests
-import datetime  # Import datetime for date and time manipulation
-import time  # Import time for sleep functionality
-from models import Base, Stock, HistoricalData  # Import ORM models
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from flask_caching import Cache
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from bs4 import BeautifulSoup
+import requests
+import datetime
+import time
+from models import Base, Stock, HistoricalData
 
 # Initialize Flask app
 app = Flask(__name__)
-# Enable CORS to allow cross-origin requests
-CORS(app)
+# Enable CORS to allow cross-origin requests from localhost:3000
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # Setup cache with SimpleCache type
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
 
-# API key for RapidAPI
-RAPIDAPI_KEY = '619ce8009cmsh1c80aa29171feb8p1cd979jsn65c59742b178'  # Replace with your RapidAPI key
-# Database URL for SQLite
+RAPIDAPI_KEY = '619ce8009cmsh1c80aa29171feb8p1cd979jsn65c59742b178'
 DATABASE_URL = 'sqlite:///stocks.db'
 
 # Setup SQLAlchemy engine and session
@@ -31,13 +29,11 @@ session = Session()
 @app.route('/api/stocks/<symbol>', methods=['GET'])
 @cache.cached(timeout=60*10, query_string=True)
 def get_stock(symbol):
-    # URL for fetching stock price from Google Finance
     url = f'https://www.google.com/finance/quote/{symbol}:NASDAQ'
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
     
     try:
-        # Extract stock price from the HTML
         price_span = soup.find('div', {'class': 'YMlKec fxKbKc'})
         if price_span:
             price = price_span.text
@@ -53,21 +49,18 @@ def get_stock(symbol):
 @cache.cached(timeout=60*60, query_string=True)
 def get_historical_data(symbol):
     try:
-        # Check if the stock exists in the database, if not create it
         stock = session.query(Stock).filter_by(symbol=symbol).first()
         if not stock:
             stock = Stock(symbol=symbol)
             session.add(stock)
             session.commit()
         
-        # URL for fetching historical data from Yahoo Finance
         url = f'https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data?symbol={symbol}&region=US'
         headers = {
             'x-rapidapi-host': 'apidojo-yahoo-finance-v1.p.rapidapi.com',
             'x-rapidapi-key': RAPIDAPI_KEY
         }
 
-        # Attempt to fetch data, retry with exponential backoff if rate-limited
         for i in range(5):
             response = requests.get(url, headers=headers)
             if response.status_code == 200:
@@ -84,7 +77,6 @@ def get_historical_data(symbol):
         if 'prices' not in data:
             return jsonify({'error': 'Failed to fetch historical data', 'data': data}), 500
 
-        # Parse historical data and store it in the database
         historical_data = data['prices']
         parsed_data = [
             {'date': datetime.datetime.fromtimestamp(entry['date']).strftime('%Y-%m-%d'), 'close': entry['close']}
@@ -114,21 +106,18 @@ def get_historical_data_multiple():
     results = {}
     for symbol in symbols:
         try:
-            # Check if the stock exists in the database, if not create it
             stock = session.query(Stock).filter_by(symbol=symbol).first()
             if not stock:
                 stock = Stock(symbol=symbol)
                 session.add(stock)
                 session.commit()
 
-            # URL for fetching historical data from Yahoo Finance
             url = f'https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v3/get-historical-data?symbol={symbol}&region=US'
             headers = {
                 'x-rapidapi-host': 'apidojo-yahoo-finance-v1.p.rapidapi.com',
                 'x-rapidapi-key': RAPIDAPI_KEY
             }
 
-            # Attempt to fetch data, retry with exponential backoff if rate-limited
             for i in range(5):
                 response = requests.get(url, headers=headers)
                 if response.status_code == 200:
@@ -148,7 +137,6 @@ def get_historical_data_multiple():
                 results[symbol] = {'error': 'Failed to fetch historical data', 'data': data}
                 continue
 
-            # Parse historical data and store it in the database
             historical_data = data['prices']
             parsed_data = [
                 {'date': datetime.datetime.fromtimestamp(entry['date']).strftime('%Y-%m-%d'), 'close': entry['close']}
@@ -174,7 +162,6 @@ def get_historical_data_multiple():
 @app.route('/api/average/<symbol>', methods=['GET'])
 def get_average_price(symbol):
     try:
-        # Get the number of days for the average calculation from the query parameters
         days = request.args.get('days', default=30, type=int)
         stock = session.query(Stock).filter_by(symbol=symbol).first()
         if not stock:
@@ -186,7 +173,6 @@ def get_average_price(symbol):
         if not historical_data:
             return jsonify({'error': 'No historical data found'}), 404
 
-        # Calculate the average closing price
         average_price = sum([data.close for data in historical_data]) / len(historical_data)
 
         return jsonify({'symbol': symbol, 'average_price': average_price, 'days': days})
