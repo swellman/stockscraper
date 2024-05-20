@@ -11,8 +11,8 @@ from models import Base, Stock, HistoricalData
 
 # Initialize Flask app
 app = Flask(__name__)
-# Enable CORS to allow cross-origin requests from all domains
-CORS(app, resources={r"/*": {"origins": "*"}})
+# Enable CORS to allow cross-origin requests from localhost:3000
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # Setup cache with SimpleCache type
 cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
 
